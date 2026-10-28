@@ -192,12 +192,13 @@ describe('OPA evaluation', () => {
 
   it('does not consult OPA when the local policy already denied', async () => {
     await startOpa(() => ({ body: { result: true } }));
-    const engine = new PolicyEngine(DEFAULT_RULES);
+    const engine = new PolicyEngine({ ...DEFAULT_RULES, denylist: ['^echo blocked-by-owner$'] });
     engine.setOpaUrl(url);
 
-    // A forbidden command is denied locally; asking OPA could only overturn it.
-    const result = await engine.evaluateWithOpa('rm -rf /', makeProfile(), 'run-command');
+    // An explicit owner denial cannot be overturned by OPA.
+    const result = await engine.evaluateWithOpa('echo blocked-by-owner', makeProfile(), 'run-command');
     expect(result.decision).toBe('deny');
+    expect(result.ruleId).toBe('denylist');
     expect(requests).toHaveLength(0);
   });
 

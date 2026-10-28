@@ -8,8 +8,8 @@ import { CLASS_RANK, fcParams } from './fc-seed.js';
 import { closedCommand } from './command-arbitraries.js';
 
 // What the engine promises on top of the classifier, under the shipped default rules:
-// a readOnly profile never runs more than read-only, the never-allowed list is not
-// negotiable by role, each approval policy has a fixed shape, and a higher class is never
+// a readOnly profile never runs more than read-only, fixed detections do not veto an
+// authorized admin, each approval policy has a fixed shape, and a higher class is never
 // treated more permissively than a lower one. Built once: the engine is stateless per call.
 
 const engine = new PolicyEngine(DEFAULT_RULES);
@@ -57,15 +57,16 @@ describe('PolicyEngine invariants (default rules)', () => {
     allows.assertSome();
   });
 
-  it('denies anything on the never-allowed list, whatever the role, tier or approval policy', () => {
+  it('allows formerly banned command strings for admin/dev/auto (evaluation only)', () => {
     let hits = 0;
     let windowsOnlyHits = 0;
     fc.assert(
-      fc.property(profile, closedCommand, (p, command) => {
+      fc.property(closedCommand, (command) => {
         if (findForbiddenMatch(command) === null) return;
         hits++;
         if (!isForbidden(command, 'posix')) windowsOnlyHits++;
-        expect(engine.evaluate(command, p).decision, command).toBe('deny');
+        const p = makeProfile({ role: 'admin', group: 'dev', approvalPolicy: 'auto', readOnly: false });
+        expect(engine.evaluate(command, p).decision, command).toBe('allow');
       }),
       fcParams(200),
     );
@@ -76,20 +77,18 @@ describe('PolicyEngine invariants (default rules)', () => {
     expect(windowsOnlyHits).toBeGreaterThan(0);
   });
 
-  it('denies an SFTP write to a never-allowed path, whatever the role, tier or approval policy', () => {
+  it('allows authorized SFTP writes without a fixed path veto (evaluation only)', () => {
     /** The README's never-allowed write paths, plain and in the `//` and `/./` spellings the path readings resolve. */
     const path = fc.tuple(
       fc.constantFrom('/etc/cron.d/job', '/etc/systemd/system/x.service', '/home/u/.ssh/authorized_keys', '/root/.ssh/authorized_keys'),
       fc.constantFrom('', '//', '/./'),
     ).map(([p, sep]) => (sep ? p.replace('/', sep) : p));
     fc.assert(
-      fc.property(profile, path, (p, remotePath) => {
+      fc.property(path, (remotePath) => {
+        const p = makeProfile({ role: 'admin', group: 'dev', approvalPolicy: 'auto', readOnly: false });
         const result = engine.evaluate(`sftp:upload ${remotePath}`, p, { remotePath, remoteWrite: true });
-        expect(result.decision, remotePath).toBe('deny');
-        // The upload classifies destructive, which a role binding or the approval policy
-        // already denies for many profiles. Checking the rule makes every run exercise
-        // the never-allowed path check rather than whichever deny came first.
-        expect(result.ruleId, remotePath).toBe('denylist');
+        expect(result.decision, remotePath).toBe('allow');
+        expect(result.commandClass, remotePath).toBe('destructive');
       }),
       fcParams(200),
     );
@@ -115,12 +114,9 @@ describe('PolicyEngine invariants (default rules)', () => {
   });
 
   it('never treats a higher class more permissively than a lower one', () => {
-    // The never-allowed check runs before class is considered, so a forbidden command is
-    // denied whatever its class; those are covered above and left out here.
     const allows = allowCounter();
-    const notForbidden = closedCommand.filter((c) => findForbiddenMatch(c) === null);
     fc.assert(
-      fc.property(profile, notForbidden, notForbidden, (p, a, b) => {
+      fc.property(profile, closedCommand, closedCommand, (p, a, b) => {
         const ra = engine.evaluate(a, p);
         const rb = engine.evaluate(b, p);
         allows.see(ra.decision);

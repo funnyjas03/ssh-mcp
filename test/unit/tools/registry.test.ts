@@ -1,5 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { createHarness, textOf, type Harness } from './harness.js';
+import { DEFAULT_RULES } from '../../../src/policy/engine.js';
+import { defaultsFromArgv } from '../../../src/cli.js';
 
 let h: Harness;
 
@@ -138,12 +140,14 @@ describe('run-command — approval gate', () => {
     expect(h.execCalls).toHaveLength(0);
   });
 
-  it('denies a forbidden command outright, with no prompt', async () => {
-    h = await createHarness();
-    h.setApproval(true);
+  it('executes a formerly banned string with the auto default and logs it (mock SSH only)', async () => {
+    h = await createHarness({ approvalPolicy: defaultsFromArgv({}).approvalMode });
+    h.setApproval(false);
     const res = await call('run-command', { command: 'rm -rf /' });
-    expect(res.isError).toBe(true);
-    expect(h.execCalls).toHaveLength(0);
+    expect(res.isError).toBeFalsy();
+    expect(h.execCalls).toEqual([{ command: 'rm -rf /', stdin: undefined }]);
+    expect(h.approvalPrompts()).toBe(0);
+    expect(h.auditRecords.at(-1)).toMatchObject({ command: 'rm -rf /', commandClass: 'destructive', decision: 'allow', exitCode: 0 });
   });
 
   it('runs a safe command without prompting', async () => {
@@ -172,13 +176,26 @@ describe('privileged-command', () => {
     expect(exec.command).toContain("'\\''");
   });
 
-  // The denylist is evaluated against the bare command as well: without that,
-  // the sudo wrapper would hide a forbidden command inside a quoted sh -c arg.
-  it('denies a forbidden command hidden inside the sudo wrapper', async () => {
-    h = await createHarness();
+  it('executes a formerly banned privileged string without prompting (mock SSH only)', async () => {
+    h = await createHarness({ approvalPolicy: defaultsFromArgv({}).approvalMode });
+    h.setApproval(false);
     const res = await call('privileged-command', { command: 'rm -rf /' });
+    expect(res.isError).toBeFalsy();
+    expect(h.execCalls).toHaveLength(1);
+    expect(h.execCalls[0].command).toContain('exec 0</dev/null; rm -rf /');
+    expect(h.execCalls[0].stdin).toBe('sudo-secret\n');
+    expect(h.execCalls[0].command).not.toContain('sudo-secret');
+    expect(h.approvalPrompts()).toBe(0);
+    expect(h.auditRecords.at(-1)).toMatchObject({ command: h.execCalls[0].command, commandClass: 'privileged', decision: 'allow', exitCode: 0 });
+    expect(JSON.stringify(h.auditRecords)).not.toContain('sudo-secret');
+  });
+
+  it('still enforces an owner denylist against the bare privileged command', async () => {
+    h = await createHarness({ approvalPolicy: 'auto' }, {}, { ...DEFAULT_RULES, denylist: ['^echo blocked-by-owner$'] });
+    const res = await call('privileged-command', { command: 'echo blocked-by-owner' });
     expect(res.isError).toBe(true);
     expect(h.execCalls).toHaveLength(0);
+    expect(h.auditRecords.at(-1)).toMatchObject({ decision: 'deny', ruleId: 'denylist' });
   });
 });
 
@@ -234,8 +251,8 @@ describe('audit records', () => {
   });
 
   it('records a policy denial as denied', async () => {
-    h = await createHarness();
-    await call('run-command', { command: 'rm -rf /' });
+    h = await createHarness({}, {}, { ...DEFAULT_RULES, denylist: ['^echo blocked-by-owner$'] });
+    await call('run-command', { command: 'echo blocked-by-owner' });
     expect(h.auditRecords.at(-1)).toMatchObject({ decision: 'deny', ruleId: 'denylist' });
   });
 
@@ -357,10 +374,10 @@ describe('command quota', () => {
   });
 
   it('does not count commands the policy already refused', async () => {
-    h = await createHarness({ commandQuotaPerDay: 2 });
-    // Denied by the forbidden list — should not spend budget.
-    await call('run-command', { command: 'rm -rf /' });
-    await call('run-command', { command: 'rm -rf /' });
+    h = await createHarness({ commandQuotaPerDay: 2 }, {}, { ...DEFAULT_RULES, denylist: ['^echo blocked-by-owner$'] });
+    // Explicit owner denials should not spend budget.
+    await call('run-command', { command: 'echo blocked-by-owner' });
+    await call('run-command', { command: 'echo blocked-by-owner' });
 
     const ok = await call('read-command', { command: 'ls' });
     expect(ok.isError).toBeFalsy();

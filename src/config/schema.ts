@@ -109,10 +109,9 @@ export const defaultsSchema = z.object({
   connectionIdleReapMs: z.number().int().positive().default(900_000),
   // 0 = unlimited. A circuit breaker for runaway agents, not a rate limit.
   commandQuotaPerDay: z.number().int().nonnegative().default(0),
-  // 0 = every destructive command prompts. Auto-approval weakens the gate, so
-  // it is opt-in rather than a default convenience.
+  // 0 = no cached grant when the owner explicitly selects a prompting mode.
   approvalGrantTtlMs: z.number().int().nonnegative().default(0),
-  approvalMode: approvalModeSchema.default('ask-destructive'),
+  approvalMode: approvalModeSchema.default('auto'),
   /**
    * Where the streaming SFTP file tools may read and write on this machine.
    *

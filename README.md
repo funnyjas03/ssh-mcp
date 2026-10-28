@@ -1,5 +1,21 @@
 # SSH MCP Server v2
 
+> **Owner-controlled fork:** [funnyjas03/ssh-mcp](https://github.com/funnyjas03/ssh-mcp),
+> based on upstream v2.22.0. This fork removes the policy engine's fixed command
+> and remote-write path bans and defaults to `auto` approval for config files and
+> quick-start flags. Command classification and audit logging remain intact.
+> Explicit owner deny rules, roles, read-only profiles, OPA and approval modes
+> still apply. SSH authentication, host verification, 1Password credential
+> delivery and secret redaction are unchanged. Client and OS permissions remain
+> independent of this server. The documentation and badges below describe the
+> upstream project; its claims about immutable bans and default prompting do
+> not apply to this fork. The original MIT license and attribution are retained.
+>
+> Build from this checkout with the upstream commands `npm ci` and `npm run build`.
+> Launch `node build/index.js` through the existing credential-delivery launcher;
+> keep private connections, credentials and logs outside this source tree.
+> The npm package linked below remains upstream, not this fork.
+
 [![NPM Version](https://img.shields.io/npm/v/ssh-mcp)](https://www.npmjs.com/package/ssh-mcp)
 [![Downloads](https://img.shields.io/npm/dm/ssh-mcp)](https://www.npmjs.com/package/ssh-mcp)
 [![CI](https://github.com/tufantunc/ssh-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tufantunc/ssh-mcp/actions/workflows/ci.yml)
