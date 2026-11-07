@@ -20,7 +20,7 @@ import type { Profile } from '../../../src/types.js';
  * (`--recursive`) — with rm taking `-r`/`-R` and chmod/chown only `-R`,
  * lowercase `-r` being a mode operation there.
  */
-describe('never-allowed spellings (GHSA-5cjr-rc2p-f66f)', () => {
+describe('classification and owner policy for former banned spellings (evaluation only)', () => {
   const engine = new PolicyEngine();
   const profile = {
     name: 'p', role: 'operator', group: 'prod',
@@ -49,21 +49,22 @@ describe('never-allowed spellings (GHSA-5cjr-rc2p-f66f)', () => {
     'flock /tmp/lk rm -rf /', 'flock -x /tmp/lk mkfs.ext4 /dev/sda1',
     'chroot /mnt rm -rf /', 'taskset 0x1 rm -rf /', 'perf record rm -rf /',
     'strace -o /tmp/t rm -rf /',
-  ])('%j is denied by the never-allowed list, not merely by role', (command) => {
+  ])('%j retains classification and follows the configured role', (command) => {
     const evaluation = engine.evaluate(command, profile);
     expect(evaluation.decision, command).toBe('deny');
-    expect(evaluation.ruleId, command).toBe('denylist');
+    expect(evaluation.ruleId, command).toBe('role-binding');
     expect(evaluation.commandClass, command).toBe('destructive');
+    expect(engine.evaluate(command, { ...profile, role: 'admin', group: 'dev', approvalPolicy: 'auto' }).decision, command).toBe('allow');
   });
 
-  it('elevation in front of the same operation still names the never-allowed rule', () => {
+  it('elevation retains privileged classification and follows the configured role', () => {
     // `sudo rm -fr /` is the one spelling whose class is `privileged` — the
-    // elevation names the binary that runs as root — but the refusal is the
-    // denylist's, not the role's: never-allowed outranks everything.
+    // elevation names the binary that runs as root. The owner role decides.
     const evaluation = engine.evaluate('sudo rm -fr /', profile);
     expect(evaluation.decision).toBe('deny');
     expect(evaluation.commandClass).toBe('privileged');
-    expect(evaluation.ruleId).toBe('denylist');
+    expect(evaluation.ruleId).toBe('role-binding');
+    expect(engine.evaluate('sudo rm -fr /', { ...profile, role: 'admin', group: 'dev', approvalPolicy: 'auto' }).decision).toBe('allow');
   });
 
   it('the recursive-rm destructive floor holds across the same spellings', () => {

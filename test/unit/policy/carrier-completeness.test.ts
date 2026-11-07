@@ -427,7 +427,9 @@ describe('fix round 2: an unrecognised pwsh option with a value must not hide -E
  * for nothing, denied anyway, because the quoted commit message happened to
  * start with a forbidden word.
  */
-describe('the catch-all cannot feed the unconditional denylist', () => {
+// In this fork the detections still classify commands, but no longer impose a
+// fixed engine veto. All commands in this block are evaluated, never executed.
+describe('carrier classification under owner-controlled policy', () => {
   const adminAutoDev = {
     name: 'dev-admin', host: 'h', port: 22, user: 'deploy', auth: 'agent', tty: false,
     timeout: 60_000, maxChars: 5000, maxOutputBytes: 1_048_576, group: 'dev',
@@ -455,10 +457,11 @@ describe('the catch-all cannot feed the unconditional denylist', () => {
     ['a backtick substitution', 'echo `shutdown -h now`'],
     ['sh -c', "sh -c 'shutdown -h now'"],
     ['pwsh -EncodedCommand', `pwsh -EncodedCommand ${encode('shutdown -h now')}`],
-  ])('certain carriers still reach the denylist: %s', (_label, command) => {
+  ])('certain carriers retain destructive classification without a fixed veto: %s', (_label, command) => {
     const result = decideAsAdmin(command);
-    expect(result.ruleId, command).toBe('denylist');
-    expect(result.decision, command).toBe('deny');
+    expect(result.ruleId, command).not.toBe('denylist');
+    expect(result.commandClass, command).toBe('destructive');
+    expect(result.decision, command).toBe('allow');
   });
 
   it('a speculative-only carrier is raised to destructive, not refused outright', () => {

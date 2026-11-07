@@ -1,8 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { startE2E, e2eAvailable, textOf } from './harness.js';
 
-// The approval gate is the mechanism that makes destructive commands safe, and
-// it depends on the *client* answering an elicitation request. Only an
+// Explicitly selected approval modes depend on the *client* answering an
+// elicitation request. Only an
 // end-to-end run proves the prompt actually crosses the transport and that the
 // answer decides whether the command runs.
 let e2e: Awaited<ReturnType<typeof startE2E>>;
@@ -12,7 +12,7 @@ afterEach(async () => { await e2e?.cleanup(); });
 
 describe.skipIf(!available)('E2E — approval gate', () => {
   it('prompts the client and runs the command when approved', async () => {
-    e2e = await startE2E();
+    e2e = await startE2E({ defaults: 'approvalMode = "ask-destructive"' });
     e2e.setApproval(true);
 
     const marker = '/tmp/e2e-approved.txt';
@@ -31,7 +31,7 @@ describe.skipIf(!available)('E2E — approval gate', () => {
   }, 40000);
 
   it('refuses the command when the client declines, and it never reaches the host', async () => {
-    e2e = await startE2E();
+    e2e = await startE2E({ defaults: 'approvalMode = "ask-destructive"' });
 
     const marker = '/tmp/e2e-declined.txt';
     e2e.setApproval(true);
@@ -49,12 +49,23 @@ describe.skipIf(!available)('E2E — approval gate', () => {
     await e2e.callTool('run-command', { command: `rm -f ${marker}` });
   }, 40000);
 
-  it('never prompts for a forbidden command — it is denied outright', async () => {
-    e2e = await startE2E();
+  it('enforces an explicit owner denylist without prompting', async () => {
+    e2e = await startE2E({ extra: '[policy]\ndenylist = ["^echo blocked-by-owner$"]' });
     e2e.setApproval(true);
 
-    const res = await e2e.callTool('run-command', { command: 'rm -rf /' });
+    // Harmless even if this assertion regresses. Former fixed-ban strings are
+    // tested only by pure policy evaluation or mocked SSH, never a real host.
+    const res = await e2e.callTool('run-command', { command: 'echo blocked-by-owner' });
     expect(res.isError).toBe(true);
+    expect(e2e.prompts).toHaveLength(0);
+  }, 40000);
+
+  it('the default runs a harmless privileged command without elicitation', async () => {
+    e2e = await startE2E();
+    e2e.setApproval(false);
+    const res = await e2e.callTool('privileged-command', { command: 'id -u' });
+    expect(res.isError).toBeFalsy();
+    expect(textOf(res)).toMatch(/\b0\b/);
     expect(e2e.prompts).toHaveLength(0);
   }, 40000);
 
@@ -81,7 +92,7 @@ describe.skipIf(!available)('E2E — approval gate', () => {
   }, 40000);
 
   it('a just-in-time grant covers a repeat of the same command', async () => {
-    e2e = await startE2E({ defaults: 'approvalGrantTtlMs = 60000' });
+    e2e = await startE2E({ defaults: 'approvalMode = "ask-destructive"\napprovalGrantTtlMs = 60000' });
     e2e.setApproval(true);
 
     const cmd = 'rm -rf /tmp/e2e-grant-test';

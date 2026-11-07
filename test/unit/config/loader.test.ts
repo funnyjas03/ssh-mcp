@@ -36,6 +36,8 @@ auth = "password"
 `);
     const { config } = await loadConfigWithDigest(path);
     expect(config.defaults.defaultProfile).toBe('dev');
+    expect(config.defaults.approvalMode).toBe('auto');
+    expect(config.profiles[0].approvalPolicy).toBe('auto');
     expect(config.defaults.sessionMaxPerConnection).toBe(5);
     expect(config.profiles).toHaveLength(1);
     expect(config.profiles[0].name).toBe('dev');
@@ -179,7 +181,7 @@ user = "test"
 `);
     const { config } = await loadConfigWithDigest(path);
     const p = config.profiles[0];
-    expect(p.approvalPolicy).toBe('ask-destructive');
+    expect(p.approvalPolicy).toBe('auto');
     expect(p.timeout).toBe(60_000);
     expect(p.maxOutputBytes).toBe(1_048_576);
   });

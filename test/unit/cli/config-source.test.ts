@@ -69,6 +69,9 @@ describe('loadAppConfig tags the config with its source', () => {
     expect(loaded.path).toBe(loader.getConfigPath());
     expect(loaded.sha256).toBeNull();
     expect(loaded.config.profiles[0].host).toBe('example.com');
+    expect(cli.defaultsFromArgv({}).approvalMode).toBe('auto');
+    expect(loaded.config.defaults.approvalMode).toBe('auto');
+    expect(loaded.config.profiles[0].approvalPolicy).toBe('auto');
   });
 
   it('reports nothing configured as source unconfigured with no profiles', async () => {
@@ -82,6 +85,7 @@ describe('loadAppConfig tags the config with its source', () => {
     expect(loaded.path).toBe(loader.getConfigPath());
     expect(loaded.sha256).toBeNull();
     expect(loaded.config.profiles).toEqual([]);
+    expect(loaded.config.defaults.approvalMode).toBe('auto');
   });
 });
 

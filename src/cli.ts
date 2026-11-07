@@ -263,7 +263,7 @@ export function defaultsFromArgv(argv: Record<string, string | null>): Defaults 
     connectionIdleReapMs: 900_000,
     commandQuotaPerDay: parseInt(argv.commandQuota as string) || 0,
     approvalGrantTtlMs: parseInt(argv.approvalGrantTtl as string) || 0,
-    approvalMode: 'ask-destructive',
+    approvalMode: 'auto',
     // No flag for transferRoot on purpose. It is the consent to touch local
     // disk, and the quick-start path exists for someone who passed a host and a
     // user on a command line — not a place to acquire that consent in passing.

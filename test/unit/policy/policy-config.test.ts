@@ -79,11 +79,8 @@ prod = ["read-only", "safe", "destructive", "privileged"]
       'sudo systemctl restart nginx',
       getProfile(after, 'prod-web'),
     );
-    // Not "allow": the profile still defaults to ask-destructive, so the command
-    // now reaches the approval gate instead of being refused outright. That is
-    // the flip that matters — the role binding no longer decides.
-    expect(granted.decision).toBe('require-approval');
-    expect(granted.ruleId).toBe('approval-policy');
+    // The configured role grant is sufficient under the fork's auto default.
+    expect(granted.decision).toBe('allow');
   });
 
   it('leaves the tiers and roles the override never mentions on their defaults', async () => {

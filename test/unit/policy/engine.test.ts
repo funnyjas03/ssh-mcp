@@ -51,13 +51,10 @@ describe('PolicyEngine', () => {
   describe('denylist refusals say what matched', () => {
     const profile = makeProfile({ role: 'admin', name: 'dev', group: 'dev', approvalPolicy: 'auto' });
 
-    it('names the built-in rule and that it cannot be switched off', () => {
+    it('does not impose a fixed veto on owner-authorized power commands', () => {
       const result = engine.evaluate('reboot', profile);
-      expect(result.ruleId).toBe('denylist');
-      expect(result.reason).toMatch(/built-in/);
-      expect(result.reason).toMatch(/power-state/);
-      // The reader's next question is "can I turn this off?" — answer it.
-      expect(result.reason).toMatch(/does not remove these/);
+      expect(result.decision).toBe('allow');
+      expect(result.commandClass).toBe('destructive');
     });
 
     it('quotes the operator pattern and points at the config file', () => {
@@ -213,31 +210,27 @@ describe('PolicyEngine', () => {
     });
   });
 
-  describe('a declared remote write to a never-allowed path', () => {
+  describe('owner-controlled remote write paths (policy evaluation only)', () => {
     // The file's own fixture helper; admin + auto so the class gates that remain
     // (destructive, privileged) do not mask the denylist decision under test.
     const profile = makeProfile({ role: 'admin', name: 'dev', approvalPolicy: 'auto' });
     const UPLOAD_KEYS = 'sftp:upload --overwrite --bytes=1 --sha256=x /root/.ssh/authorized_keys';
 
-    it('is refused with the built-in wording, with no operator denylist at all', () => {
+    it('allows an authorized write without an owner denylist', () => {
       const result = engine.evaluate(UPLOAD_KEYS, profile, {
         remotePath: '/root/.ssh/authorized_keys',
         remoteWrite: true,
       });
-      expect(result.decision).toBe('deny');
-      expect(result.ruleId).toBe('denylist');
-      expect(result.reason).toMatch(/built-in never-allowed rule/);
-      expect(result.reason).toContain("writing to any user's authorized_keys");
-      expect(result.reason).toContain('cannot be switched off');
+      expect(result.decision).toBe('allow');
+      expect(result.commandClass).toBe('destructive');
     });
 
-    it('the Windows reading refuses a case-variant spelling', () => {
+    it('also allows an authorized Windows path without an owner denylist', () => {
       const result = engine.evaluate('sftp:upload --overwrite --bytes=1 --sha256=x k', profile, {
         remotePath: 'C:\\Users\\a\\.ssh\\Authorized_Keys.',
         remoteWrite: true,
       });
-      expect(result.decision).toBe('deny');
-      expect(result.ruleId).toBe('denylist');
+      expect(result.decision).toBe('allow');
     });
 
     it('a declared write to a benign path is not refused by the built-ins', () => {
@@ -255,15 +248,16 @@ describe('PolicyEngine', () => {
       expect(result.decision).toBe('allow');
     });
 
-    it('the built-in wording wins even when an operator pattern also matches the path', () => {
+    it('still enforces an explicit owner pattern on the write path', () => {
       const withDeny = new PolicyEngine({ ...DEFAULT_RULES, denylist: ['authorized_keys$'] });
       const result = withDeny.evaluate(UPLOAD_KEYS, profile, {
         remotePath: '/root/.ssh/authorized_keys',
         remoteWrite: true,
       });
       expect(result.decision).toBe('deny');
-      expect(result.reason).toMatch(/built-in never-allowed rule/);
-      expect(result.reason).toContain('cannot be switched off');
+      expect(result.ruleId).toBe('denylist');
+      expect(result.reason).toContain('[policy].denylist');
+      expect(result.reason).not.toContain('built-in');
     });
   });
 
@@ -284,7 +278,7 @@ describe('PolicyEngine', () => {
     // Admin can run destructive on prod but needs approval
     expect(engine.evaluate('rm -rf /tmp/test', adminProd).decision).toBe('require-approval');
 
-    // Admin on dev also needs approval (ask-destructive default)
+    // This fixture explicitly opts in to ask-destructive.
     expect(engine.evaluate('rm -rf /tmp/test', adminDev).decision).toBe('require-approval');
   });
 
@@ -318,18 +312,17 @@ describe('PolicyEngine', () => {
       .toThrow(/Invalid denylist pattern/);
   });
 
-  it('applies operator-supplied denylist patterns on top of the canonical list', () => {
+  it('enforces only owner-supplied denylist patterns', () => {
     const engineWithExtra = new PolicyEngine({ ...DEFAULT_RULES, denylist: ['\\bnpm\\s+publish\\b'] });
     const profile = makeProfile({ role: 'admin', group: 'dev', approvalPolicy: 'auto' });
     expect(engineWithExtra.evaluate('npm publish', profile).decision).toBe('deny');
-    // ...and the canonical entries still apply.
-    expect(engineWithExtra.evaluate('rm -rf /', profile).ruleId).toBe('denylist');
+    // Evaluation only: no host executes this string.
+    expect(engineWithExtra.evaluate('rm -rf /', profile).decision).toBe('allow');
   });
 
-  it('separates never-allowed commands from destructive-but-approvable ones', () => {
+  it('applies an explicitly selected approval mode to former fixed-ban commands too', () => {
     const profile = makeProfile({ role: 'admin', group: 'dev', approvalPolicy: 'ask-destructive' });
-    // `rm -rf /` can never run; `rm -rf /tmp/x` is destructive but approvable.
-    expect(engine.evaluate('rm -rf /', profile).ruleId).toBe('denylist');
+    expect(engine.evaluate('rm -rf /', profile).decision).toBe('require-approval');
     expect(engine.evaluate('rm -rf /tmp/x', profile).decision).toBe('require-approval');
   });
 

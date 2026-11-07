@@ -6,9 +6,8 @@ import { createHarness, textOf, type Harness } from './harness.js';
 import { DEFAULT_RULES } from '../../../src/policy/engine.js';
 
 /**
- * The write tools declare their write, so the built-in never-allowed paths refuse
- * them without any operator denylist; the read tools of the same paths are left to
- * their class. A tool that stops declaring (or a read tool that starts) fails its row.
+ * The policy and audit pipeline permits owner-authorized paths. SSH is stubbed;
+ * these tests do not write to any remote host or claim a completed SFTP transfer.
  */
 const ADMIN_AUTO = { role: 'admin' as const, approvalPolicy: 'auto' as const };
 
@@ -30,17 +29,17 @@ async function call(tool: string, args: Record<string, unknown>) {
   return h.client.callTool({ name: tool, arguments: args }) as Promise<any>;
 }
 
-describe('the SFTP write tools and the never-allowed paths', () => {
+describe('the SFTP tools and owner-authorized paths (mock SSH)', () => {
   it.each([
     ['sftp-upload', { remotePath: '/root/.ssh/authorized_keys', content: 'k' }],
     ['sftp-upload', { remotePath: '/etc/cron.d/x', content: 'k' }],
     ['sftp-upload-file', { remotePath: '/root/.ssh/authorized_keys', localPath: 'k' }],
     ['sftp-upload-file', { remotePath: '/etc/systemd/system/x.service', localPath: 'k' }],
-  ])('%s to %j is refused by the built-in list', async (tool, args) => {
+  ])('%s to %j reaches execution and records an allowed policy decision', async (tool, args) => {
     const result = await call(tool, args);
-    expect(result.isError).toBeTruthy();
-    expect(textOf(result)).toMatch(/built-in never-allowed rule/);
-    expect(h.auditRecords.at(-1)).toMatchObject({ decision: 'deny', ruleId: 'denylist' });
+    expect(textOf(result)).not.toMatch(/never-allowed/);
+    expect(h.auditRecords.at(-1)).toMatchObject({ decision: 'allow' });
+    expect(h.approvalPrompts()).toBe(0);
   });
 
   it.each([
