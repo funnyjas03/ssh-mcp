@@ -203,7 +203,7 @@ describe.skipIf(!allUp)('reload-config against live connections', () => {
 
   it('applies an approvalPolicy change to an open connection without reconnecting', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    live = await startLive(profileToml('operator', 'operator'));
+    live = await startLive(profileToml('operator', 'operator', 'approvalPolicy = "ask-destructive"'));
     const marker = '/tmp/ssh-mcp-reload-policy-marker';
 
     const ls = await live.call('read-command', { profile: 'operator', command: 'ls /' });
